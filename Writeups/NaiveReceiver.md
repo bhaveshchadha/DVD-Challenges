@@ -1,6 +1,11 @@
 # Naive Receiver
-we will only look into how whole pool was drained and not the receiver since that was very simple and consciously so by the challenge makers since main goal anyway is to drain the pool .
+
 ## Vulnerability
+
+2 parts first for receiver and second for pool
+
+The pool permits an arbitrary caller to initiate a flash loan on behalf of a receiver, and the receiver has no authorization check preventing this. Because the fee is charged to the receiver, an attacker can repeatedly force the receiver to pay fees.
+
 The protocol allowed somebody who has not deposited anything to withdraw from the pool an arbitrary amount and also in same logic be withrawer and the whom the withdrawn amount is sent to be different .
 
 ## Root Cause
