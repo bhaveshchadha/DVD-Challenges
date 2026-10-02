@@ -15,14 +15,13 @@ contract MaliciousBorrower is IERC3156FlashBorrower {
     SimpleGovernance governance;
     IERC3156FlashLender public immutable lender;
     DamnValuableVotes public immutable token;
-    address public immutable player;
+
     address public recovery;
     uint256 public actionId;
 
     constructor(address _lender, DamnValuableVotes _token) {
         lender = IERC3156FlashLender(_lender);
         token = _token;
-        player = msg.sender;
     }
 
     function executeFlashLoan(
