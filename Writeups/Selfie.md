@@ -1,21 +1,59 @@
 # Selfie
 
 ## Vulnerability
-Here the main vulnerabiltiy was the fact that it treats time limit as a complete protection gainst fraudulent vote due to flash loan tokens but don't consider doing checks like checking balance of delegator while the actual execute happens
+
+The main vulnerability is that the governance system allows an attacker to use **temporary voting power obtained through a flash loan to satisfy the proposal threshold**, while not requiring that voting power to still exist when the governance action is executed after the delay.
+
 ## Root Cause
-can query an action using flash laons, execute it later without checking at the time of execution ,the eligibility
+
+The governance action's eligibility is established when the action is **proposed/queued**, but the required voting power is **not revalidated when the action is executed**.
+
+This allows the attacker to:
+
+* obtain voting power temporarily,
+* queue the malicious action,
+* return the flash-loaned tokens,
+* wait for the governance delay,
+* and execute the action without still holding the tokens that gave them voting power.
+
 ## Broken Invariant / Assumption
-Assumption here is timelimit itslef is treated as complete protection against voting tokens botught using flash loan
+
+The broken assumption is:
+
+> **Once an action has satisfied the governance requirements, its authorization is assumed to remain valid until execution, even though the voting power used to authorize it can disappear.**
+
+The governance system therefore treats proposal-time voting power as sufficient authorization for a later privileged state transition.
+
 ## Attack Path
 
-1.first create  maliciousloan attacker contract
-2.on the attacker, call execute while also sending necessary arguments attacker would need,like governance token,recovery address
-3.then lender call flashloan where action is queried
-4.then in foundry test warp to 2 days and execute the action
+1. Deploy a malicious attacker contract.
+2. Take a flash loan of the governance tokens.
+3. Delegate the borrowed tokens to obtain the required voting power.
+4. Propose/queue a malicious governance action, such as `emergencyExit`.
+5. The governance system accepts the action and starts the execution delay.
+6. Return the flash-loaned tokens.
+7. Wait until the governance delay has passed.
+8. Execute the previously approved action without needing to still possess the voting power.
+9. The malicious action transfers the pool's funds to the attacker's recovery address.
 
 ## Why the Victim Loses Funds
-because they fail to make proper constraints againt misuse of flashloans
+
+The attacker can use **temporary voting power to authorize a privileged action**, and the governance system does not recheck the required voting-power condition when that action is executed.
+
+Therefore, the attacker can execute the malicious action even after the flash-loaned voting tokens have been returned.
+
 ## Remediation
-while executing check for all the necessary constraints that are required for state transition to stay valid
+
+Security-critical governance conditions should be validated at the appropriate stage of the state transition rather than assuming that conditions checked earlier remain valid indefinitely.
+
+In particular, the governance design should prevent **temporary voting power from creating authorization that remains valid after that voting power disappears**.
+
 ## Key Lesson
-constaints should be ser for each step individually even if only one thing changes
+
+> **A security-critical condition being valid at one stage of a state transition does not guarantee that it remains valid at a later stage.**
+
+Governance systems must consider the entire lifecycle:
+
+**propose → queue → delay → execute**
+
+and ensure that assumptions made at one stage cannot be invalidated before the privileged action is executed.
