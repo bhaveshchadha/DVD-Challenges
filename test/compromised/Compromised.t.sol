@@ -121,11 +121,7 @@ contract CompromisedChallenge is Test {
 
         (exchange).sellOne(id);
         payable(recovery).transfer(999 ether);
-        // // nft.transferFrom(
-        // //     player, // from
-        // //     recovery, // to
-        // //     id // NFT ID
-        // // );
+      
         vm.stopPrank();
     }
 
