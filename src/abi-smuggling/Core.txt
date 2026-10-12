@@ -1,0 +1,4 @@
+the core is understanding how when functions are called what calldata is
+what outer calldata is
+what inner calldata is
+how storage works for static arguments like address and how it works for dynamic arguments like bytes(offset,offset length,dynamic argument)
