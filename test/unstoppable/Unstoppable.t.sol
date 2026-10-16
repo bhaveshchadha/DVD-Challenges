@@ -98,8 +98,8 @@ contract UnstoppableChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_unstoppable() public checkSolvedByPlayer {
-        // change asset to conversion rate from 1 to something else
-        // this vauses the incorrect invariant check to fail
+        // change asset-to-share conversion rate 
+        // this causes the incorrect invariant check to fail
         token.transfer(address(vault), INITIAL_PLAYER_TOKEN_BALANCE);
     }
 
