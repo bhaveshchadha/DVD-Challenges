@@ -92,7 +92,7 @@ contract NaiveReceiverChallenge is Test {
      */
     function test_naiveReceiver() public checkSolvedByPlayer {
         for (uint256 i = 0; i < 10; i++) {
-            pool.flashLoan(receiver, address(weth), 1 ether, bytes(""));
+            pool.flashLoan(receiver, address(weth), 0 ether, bytes(""));
         }
 
         bytes memory maliciousData = abi.encodeCall(
