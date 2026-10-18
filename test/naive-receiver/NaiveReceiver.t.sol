@@ -11,6 +11,10 @@ import {
 import {
     FlashLoanReceiver
 } from "../../src/naive-receiver/FlashLoanReceiver.sol";
+import {
+    IERC3156FlashBorrower
+} from "@openzeppelin/contracts/interfaces/IERC3156FlashBorrower.sol";
+
 import {BasicForwarder} from "../../src/naive-receiver/BasicForwarder.sol";
 
 contract NaiveReceiverChallenge is Test {

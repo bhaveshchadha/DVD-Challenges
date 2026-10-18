@@ -60,7 +60,7 @@ contract NaiveReceiverPool is Multicall, IERC3156FlashLender {
         // Transfer WETH and handle control to receiver
         weth.transfer(address(receiver), amount);
         totalDeposits -= amount;
-
+ 
         if (
             receiver.onFlashLoan(
                 msg.sender,
